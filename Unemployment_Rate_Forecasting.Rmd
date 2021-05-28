@@ -1,0 +1,480 @@
+---
+title: "Romanian Unemployment Rate Forecasting"
+author: "Eduard Manta, Adriana Davidescu"
+date: "27/05/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Comparative analysis of different univariate forecasting methods in modelling and predicting the Romanian unemployment rate for the period 2021-2022 
+
+Unemployment has risen as the economy has shrunk. The coronavirus crisis has affected many sectors in Romania, some companies diminishing or even ceasing their activity. Making forecasts of the unemployment rate has a fundamental impact and importance on future social policy strategies. \
+
+The aim of the tutorial is to comparatively analyze the forecast performances of different univariate time series methods with the purpose of providing future predictions of unemployment rate. In order to do that several forecasting models (SARIMA, Holt Winters, ETS, NNAR) have been applied and their forecast performances have been evaluated on both the in-sample data covering the period January 2000-December 2017 used for the model identification and estimation and the out of sample data covering the last three years, 2018-2020. The forecast of unemployment rate relies on the next two years, 2021-2022. \
+
+Based on the in-sample forecast assessment of different methods, the forecast measures RMSE, MAE, and MAPE suggested that the multiplicative Holt-Winters model outperform the other models. For the out-of-sample forecasting performance of models, RMSE and MAE values revealed that NNAR model has better forecasting performance, while according to MAPE the SARIMA model registers higher forecast accuracy. The empirical results of Diebold-Mariano test at one forecast horizon for out-sample methods revealed differences in the forecasting performance be-tween SARIMA and NNAR, the best model of modelling and forecasting unemployment rate being considered to be the NNAR model.
+
+```{r libraries, message=FALSE, warning=FALSE}
+# Loading libraries
+library(forecast)
+library(tidyverse)
+library(readxl)
+library(TSstudio)
+library(lmtest)
+library(Metrics)
+library(uroot)
+library(urca)
+library(aTSA)
+library(portes)
+library(FinTS)
+library(TSA)
+library(tseries)
+library(gt)
+```
+
+## Data and empirical results
+
+We have used in the empirical analysis the ILO unemployment rate for Romania covering the period 2000M01-2020M12, summing up a total of 252 monthly observations. The data source is the Employment and Unemployment database of Eurostat. We used for the model estimation and identification the estimation period 2000M1-2017M12 as training data and the period 2018M01-2020M12 as test data, while the forecast projections have been made for the next two years, 2021-2022.
+
+```{r import}
+# Import the dataset
+unemployment_rate <- read_excel("C:/Users/40726/Desktop/Analytics/Entropy/unemployment_rate.xlsx")
+
+# Creating unemployment rate time series object called y for simplifying the code
+y <- ts(unemployment_rate, start=2000, frequency = 12)
+
+# Splitting the data intro training and test sets
+training <- window(y, start=2000, end=c(2017,12))
+test <- tail(y, 12*3)
+
+# Time series plot
+autoplot(y) +
+  ggtitle("The evolution of monthly Romanian unemployment rate") +
+  xlab("Year") +
+ ylab("%")
+```
+
+In January-October 2020, the medium unemployment rate stood at 4.9%, up 1.1 points year/year, an evolution determined by the incidence of the health crisis (and the consequences of this unprecedented shock), partially offset by the implementation of an unprecedented relaxed mix of economic policies.
+
+```{r summary statistics}
+# Distribution of Unemployment rate
+ggplot(y, aes(x=y)) + 
+  geom_histogram(bins = 25)+
+  labs(title = "Distribution of Romanian Unemployment Rate")+
+  xlab("")+ylab("")
+
+summary(y)
+sd(y)
+skewness(y)
+kurtosis(y)
+jarque.bera.test(y)
+
+
+Series <- c("Sample","Observations","Mean","Median","Maximum","Minimum",
+            "Std.Dev.","Skewness","Kurtosis","Jarque-Bera","Probability")
+`Unemployment Rate` <- c("2000M01 - 2020M12",252,6.542,6.800,9.500,3.600,
+            1.260,-0.517,-0.267,12.014,"0.002***")
+summary_statistics <- as.data.frame(cbind(Series,`Unemployment Rate`))
+summary_statistics %>% gt() %>% tab_header(
+  title = md("The **Romanian Unemployment Rate** statistics for the period 2000M1-2020M12"))
+```
+\
+The Romanian unemployment rate exhibits seasonal fluctuations over the period 2000-2020, with peaks in the last and the first months of the year.
+
+```{r seasonality}
+# Seasonality subseries
+ggsubseriesplot(y) +
+  ylab("%") +
+  ggtitle("Seasonal subseries plot: monthly unemployment rate")
+
+# Polar seasonal plot
+ggseasonplot(y, polar=TRUE) +
+  ylab("%") +
+  ggtitle("Polar seasonal plot:monthly unemployment rate ")
+```
+
+The evolution of the monthly unemployment rate is revealing a clear seasonal component in the data, confirmed also by the autocorrelation plot.
+
+```{r acf, echo=TRUE, message=FALSE, warning=FALSE}
+# Autocorrelation plot
+ggAcf(y, lag=48,main="Autocorrelation")
+
+```
+
+```{r pacf, echo=TRUE, message=FALSE, warning=FALSE}
+# Partial autocorrelation plot
+ggPacf(y,lag=48,main ="Partial Autocorrelation")
+```
+
+The empirical results of **Holt Winters** additive and multiplicative models revealed that because both models have exactly the same number of parameters to estimate, the training *RMSE* from both models can be compared, revealing that the method with multiplicative seasonality fits the data best. Also, based on informational criteria (*AIC, AICc or BIC*), the optimal model is also the multiplicative version of HW. Table 2 gives the results of the both in-sample and out-of-sample forecasting accuracy measures of the Holt-Winters methods for the unemployment rate. 
+
+```{r hw additive, echo=TRUE, message=FALSE, warning=FALSE}
+# Holt Winter Additive forecast and accuracy
+hw_additive <- hw(training,seasonal="additive",h=60)
+summary(hw_additive)
+forecast::accuracy(hw_additive,test)
+```
+
+
+```{r hw multiplicative, echo=TRUE, message=FALSE, warning=FALSE}
+# Holt Winter Multiplicative forecast and accuracy
+hw_multiplicative <- hw(training,seasonal="multiplicative",h=60)
+summary(hw_multiplicative)
+forecast::accuracy(hw_multiplicative,test)
+```
+
+The empirical results of Holt Winters for the forecast of unemployment rate
+```{r hw results, echo=TRUE, message=FALSE, warning=FALSE}
+`Model 1: Holt-Winters multiplicative method` <- c("Smoothing parameters:",
+                                                    "Alpha(level) = 0.6928",
+                                                    "Beta(trend)  = 0.0001",
+                                                    "Gamma(seasonal) = 0.0001",
+                                                   "AIC= 630.187",
+                                                   "AICc= 633.278",
+                                                   "BIC= 687.566")
+`Model 2: Holt-Winters additive method` <-c("Smoothing parameters:",
+                                            "Alpha(level) = 0.7503",
+                                            "Beta(trend)  = 0.0001",
+                                            "Gamma(seasonal) = 0.0001",
+                                            "AIC= 645.789",
+                                            "AICc= 648.8807",
+                                            "BIC= 703.169")
+empirical_results_HW <- as.data.frame(cbind(`Model 1: Holt-Winters multiplicative method`,`Model 2: Holt-Winters additive method`))
+empirical_results_HW %>% gt() %>% tab_header(
+  title = md("**The empirical results of HW for the forecast of unemployment rate**"))
+```
+
+According to RMSE measure, the multiplicative model performs better than the additive one, while based on the other forecast accuracy measures (*MAPE, MASE or MAE*), the optimal model is the additive one, for which they registered the minimum values.
+
+```{r hw statistics, echo=TRUE, message=FALSE, warning=FALSE}
+
+Metrics <- c("ME","RMSE","MAE","MPE","MAPE","MASE")
+`HW multiplicative training` <- c(-0.0123,0.2770,0.2086,-0.3191,3.0367,0.3317)
+`HW multiplicative test` <- c(-0.2669,0.6905,0.6524,-7.8322,15.1393,1.0373)
+`HW additive training` <- c(0.006,0.2804,0.2108,-0.1258,3.0699,0.3353)
+`HW additive test` <- c(-0.03710,0.7480,0.6273,-2.6100,13.8267,0.9974)
+
+forecasting_performance_hw <- as.data.frame(cbind(Metrics,
+                                                  `HW multiplicative training`,
+                                                  `HW multiplicative test`,
+                                                  `HW additive training`,
+                                                  `HW additive test`))
+
+  
+forecasting_performance_hw %>% gt() %>% tab_header(
+  title = md("**Forecasting Performance of Holt-Winters**"))
+```
+
+Analyzing the evolution of monthly unemployment rate for the period 2021-2022, it can be highlighted the fact that the forecast projections tend to under evaluate the actual series, not capturing the impact of the pandemics, and revealing a downward trend in both cases, more accentuated in the case of the multiplicative model.
+
+```{r hw plot, echo=TRUE, message=FALSE, warning=FALSE}
+# Plot of both hw models
+autoplot(y) +
+  autolayer(hw_additive, series="HW additive forecasts", PI=FALSE) +
+  autolayer(hw_multiplicative, series="HW multiplicative forecasts",
+            PI=FALSE) +
+  xlab("Time") +
+  ylab("Monthly unemployment rate(%)") +
+  ggtitle("The forecast of unemployment rate based on HW models for the period 2021-2022") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+In the process of obtaining reliable forecast of the monthly unemployment rate, **ETS** automatic selection framework, based on minimizing the **AICc** revealed the optimal model to be an **ETS (M, N, M)** with multiplicative error, no trend and multiplicative season. The empirical results highlighted that on the training data set, the ETS model produces better results in comparison with HW additive or multiplicative methods. The **ETS(M,N,M)** model will provide different point forecasts to the multiplicative Holt-Winters’ method, because the parameters have been estimated differently, the default estimation method being maximum likelihood rather than minimum sum of squares.
+
+```{r ets, echo=TRUE, message=FALSE, warning=FALSE}
+# Fitting ets model
+fit.ets_training<-ets(training)
+#summary(fit.ets_training)
+
+# ETS table preparation
+`ETS(M, N, M) model: Multi-plicative Error, No trend, Multiplicative Season`<-
+  c("Smoothing parameters:","Alpha(level) = 0.7914","Gamma(seasonal) = 0.0001",
+    "AIC= 627.799","AICc= 630.199","BIC= 678.428")
+
+empirical_results_ETS <- as.data.frame(`ETS(M, N, M) model: Multi-plicative Error, No trend, Multiplicative Season`)
+empirical_results_ETS %>% gt() %>% tab_header(
+  title = md("**The empirical results of ETS models for the forecast of unemployment rate**"))
+```
+
+Forecasting Performance of ETS model
+
+```{r ets performance, echo=TRUE, message=FALSE, warning=FALSE}
+# Forecasting ETS
+fit.ets_training %>% forecast::forecast(h = 60) %>%
+  forecast::accuracy() 
+
+# Forecasting table preparation
+Metrics <- c("ME","RMSE","MAE","MPE","MAPE","MASE")
+`ETS training` <- c(-0.0166,0.2788,0.2097,-0.3682,3.0569,0.3335)
+forecasting_performance_ets <- as.data.frame(cbind(Metrics,
+                                                  `ETS training`))
+
+forecasting_performance_ets %>% gt() %>% tab_header(
+  title = md("**Forecasting Performance of ETS model**"))
+```
+
+The plot of **ETS (M, N, M)** components displays the states over time while the second plot shows point forecasts and prediction intervals generated from the model. The empirical results of the model pointed out an under evaluation of the real values during the period of test data set from 2018 to 2020, highlighting an oscillate evolution characterized by a strong seasonal pattern also for the forecast projections period, 2021-2022.
+
+```{r ets components, echo=TRUE, message=FALSE, warning=FALSE}
+# Components plot
+autoplot(fit.ets_training)
+```
+
+```{r ets residuals, echo=TRUE, message=FALSE, warning=FALSE}
+# Checking the residuals
+checkresiduals(fit.ets_training)
+```
+
+The forecast of unemployment rate based on the results of ETS (M, N, M)
+
+```{r ets forecast, echo=TRUE, message=FALSE, warning=FALSE}
+# Forecast plot ETS with funchart
+training %>% ets() %>% forecast::forecast(h=60) %>% autoplot()
+```
+
+In order to fit the **NNAR model**, the series of unemployment rate has been explored on the training data set in the process of identifying the order of an AR term present in the data, using the correlogram of the series. Based on *ACF and PACF* plot, a pure **AR(1)** process can be highlighted for the non-seasonal part. Also analyzing the ACF plot, the decaying spikes every 12 months interval indicates a seasonal component present in the data. As the autocorrelation at the seasonal period (ACF at lag 12) is positive, an autoregressive model for seasonal part should be considered, therefore the order P was set to 1. Therefore, a **NNAR(1,1,k)12** model is fitted and the in-sample and out-sample root mean square error (*RMSE*), mean absolute error(MAE), mean absolute scale error (*MASE*) and mean absolute percentage error (*MAPE*) are provided in table where *k =1, ..., 14*.
+
+```{r nnar fit, echo=TRUE, message=FALSE, warning=FALSE}
+# Fitting the NNAR
+UR_NNAR <- nnetar(training,p=1,P=1,size=10, lambda=0)
+
+# Forecasting NNAR
+fcast <- forecast::forecast(UR_NNAR, PI=TRUE, h=60)
+
+fit_nnar_training <- forecast::forecast(UR_NNAR, PI=TRUE, h=24)
+
+# K fold cross validation for training set for NNAR
+# forecast::accuracy(fit_nnar_training, test) # k=1
+# modelcv <- CVar(training, k=2)
+# print(modelcv)
+# modelcv <- CVar(training, k=3)
+# print(modelcv)
+# modelcv <- CVar(training, k=4)
+# print(modelcv)
+# modelcv <- CVar(training, k=5)
+# print(modelcv)
+# modelcv <- CVar(training, k=6)
+# print(modelcv)
+# modelcv <- CVar(training, k=7)
+# print(modelcv)
+# modelcv <- CVar(training, k=8)
+# print(modelcv)
+# modelcv <- CVar(training, k=9)
+# print(modelcv)
+# modelcv <- CVar(training, k=10)
+# print(modelcv)
+# # K fold cross validation for test set for NNAR
+# modelcv <- CVar(test, k=2)
+# print(modelcv)
+# modelcv <- CVar(test, k=3)
+# print(modelcv)
+# modelcv <- CVar(test, k=4)
+# print(modelcv)
+# modelcv <- CVar(test, k=5)
+# print(modelcv)
+# modelcv <- CVar(test, k=6)
+# print(modelcv)
+# modelcv <- CVar(test, k=7)
+# print(modelcv)
+# modelcv <- CVar(test, k=8)
+# print(modelcv)
+# modelcv <- CVar(test, k=9)
+# print(modelcv)
+# modelcv <- CVar(test, k=10)
+# print(modelcv)
+
+# Output preparation
+
+k <- c("RMSE Training","MAE Training","MAPE Training","MASE Training","RMSE Test","MAE Test"	,"MAPE Test","MASE Test")
+`1` <- c( 0.3570,	0.2734,	3.9654,	0.4348,	0.6792,	0.6399,	16.2143,	1.0174)
+`2` <- c(	0.3477,	0.2662,	3.8562,	0.4233,	0.9019,	0.8542,	21.6274,	1.3582)
+`3` <- c(	0.3402,	0.2604,	3.7626,	0.4141,	0.8510,	0.8044,	20.3754,	1.2790)
+`4` <- c(	0.3329,	0.2553,	3.6772,	0.4059,	2.0452,	1.8630,	47.2547,	2.9622)
+`5` <- c(	0.3297,	0.2524,	3.6264,	0.4013,	1.6242,	1.4196,	36.1478, 2.2572)
+`6` <- c(	0.3228,	0.2464,	3.5341,	0.3918,	0.7710,	0.7208,	18.2993,	1.1461)
+`7` <- c(	0.3195,	0.2443,	3.5057,	0.3884,	0.7739,	0.7221,	18.3387,	1.1482)
+`8` <- c(	0.3173,	0.2421,	3.4737,	0.3850,	0.8042,	0.7518,	19.0849,	1.1954)
+`9` <- c(	0.3167,	0.2421,	3.4681,	0.3850,	0.7873,	0.7356,	18.6744,	1.1696)
+`10` <- c(	0.3150,	0.2411,	3.4513,	0.3834,	0.5979,	0.5508,	14.0168,	0.8758)
+`11` <- c(	0.3087,	0.2362,	3.3860,	0.3757,	0.6936,	0.6450,	16.3913,	1.0256)
+`12` <- c(	0.3033,	0.2329,	3.3456,	0.3704,	0.6220,	0.5747,	14.6184,	0.9139)
+`13` <- c(	0.3058,	0.2339,	3.3533,	0.3719,	0.7008,	0.6510,	16.5462,	1.0351)
+`14` <- c(	0.3064,	0.2357,	3.3779,	0.3749,	0.6944,	0.6452,	16.4001,	1.0260)
+
+cross_validation <- as.data.frame(cbind(k,`1`,`2`,`3`,`4`,`5`,`6`,`7`,`8`,`9`,`10`,`11`,`12`,`13`,`14`))
+
+
+cross_validation %>% gt() %>% tab_header(
+  title = md("**Forecasting Performance of NNAR(1,1,k)12**"),
+  subtitle = "Training and Test data sets")
+```
+
+The selection of the best model relied on the lowest values of all forecast accuracy measures (*RMSE, MAE, MAPE and MASE*), but especially on the values of MAPE and MASE which are scale independent, used to compare forecast accuracy across series on different scales and seen as an appropriate measure when the out-of-sample data is not of same length as the in-sample data. Based on the results of above, MASE and MAPE are lower for the training data set with 12 nodes in the hidden layer, whereas the out-of-sample MASE and MAPE are lower for *10 nodes* in the hidden layer. There-fore, we can consider as the best choice the model **NNAR (1,1,10)12**. The forecast of the unemployment rate based on the NNAR(1,1,10)12 model results revealed a downward trend with a peak in September 2018 (4.43%) and with a forecasting value for 2021-2022 oscillating around the value of 4.35%.
+
+\
+
+Forecasts from a neural network with one seasonal and non-seasonal lagged input and one hidden layer containing ten neurons.
+
+```{r nnar forecast, echo=TRUE, message=FALSE, warning=FALSE}
+# NNAR forecasting
+autoplot(fcast)
+```
+
+For fitting a SARIMA model, we used data covering the period January 2000 to December 2017.The series exhibited a strong seasonal pattern over the horizon 2000-2017. \
+In order to fit a suitable time series model, the stationarity need to be investigated based on Augmented Dickey-Fuller and Philips-Perron tests. The graphical inspection of the autocorrelation and Partial Correlation Plot of Romania’s quarterly unemployment rate revealed that the values of autocorrelation coefficients decrease slowly, pointing out a non-stationary and relatively stable seasonal pattern of our time series.
+Also the time series plot of the first difference of the series highlighted that the unemployment rate is a non-stationary mean time series. The information is also con-firmed by the empirical results of Bartlett and Ljung-Box tests.
+Also the time series plot of the first difference of the series highlighted that the first difference of the unemployment rate seems a stationary mean time series. Therefore, the original quarterly series is a non-stationary time series. 
+
+``` {r sarima lag1, echo=TRUE, message=FALSE, warning=FALSE}
+# Display the first lag difference in order to help to identify the SARIMA
+training%>% diff(lag=1) %>% ggtsdisplay()
+```
+
+The diagram series plot indicate that possible stationarity exists in first differences. Alternately, we investigated the presence of unit roots by applying the Augmented Dickey-Fuller and Phillips-Peron tests initially to the series in level and then to the series in first differences. The empirical results on unemployment rate are displayed below, indicating that the series of unemployment rate is stationary in first differences, being integrated of order 1.  
+
+``` {r adf pp test, echo=TRUE, message=FALSE, warning=FALSE}
+# Create the new lagged 1 difference series
+training_sarima <- training%>% diff(lag=1) 
+
+# Checking ADF
+# summary(ur.df(training, type = c("none"), lags = 1))
+# summary(ur.df(training_sarima, type = c("none"), lags = 1))
+# 
+# summary(ur.df(training, type = c("drift"), lags = 1))
+# summary(ur.df(training_sarima, type = c("drift"), lags = 1))
+# 
+# summary(ur.df(training, type = c("trend"), lags = 1))
+# summary(ur.df(training_sarima, type = c("trend"), lags = 1))
+
+# Checking Philip-Peron
+# summary(ur.pp(training,type = c("Z-alpha"), model = c("constant", "trend")))
+# summary(ur.pp(training_sarima,type = c("Z-alpha"), model = c("constant", "trend")))
+# 
+# summary(ur.pp(training,type = c("Z-alpha"), model = c("constant")))
+# summary(ur.pp(training_sarima,type = c("Z-alpha"), model = c("constant")))
+# 
+# summary(ur.pp(training,type = c("Z-alpha"), model = c("trend")))
+# summary(ur.pp(training_sarima,type = c("Z-alpha"), model = c("trend")))
+
+`Unit Root` <- c("ADF level","PP level","ADF first difference","PP first difference")
+`T&C` <- c("-3.56**","-3.52**","-15.87***","-16.20***")
+`C` <- c("-2.58*",	"-2.72*",		"-15.90***",	"-16.01***")
+`None` <- c("-0.90",	"-0.98",		"-15.91***",	"-16.01***")
+
+unit_root <- as.data.frame(cbind(`Unit Root`,`T&C`,`C`,`None`))
+
+unit_root %>% gt() %>% tab_header(
+  title = md("**Unit root analysis of the Romanian unemployment rate**")) %>%
+  tab_source_note(
+    source_note = "Note: ***, **, * means stationary at 1%, 5% and 10%; T&C represents the most general model with a constant and trend; C is the model with a constant and without trend; None is the most restricted model without a drift and trend"
+  )
+```
+
+The next step was to test the presence of a structural break around 2009, taking into account that the presence of a structural break will invalidate the results of unit root tests. Therefore, Zivot-Andrews test has been used, the empirical result revealing that there is no enough evidence to reject both null hypothesis of unemployment has a unit root with structural break in trend, and in both intercept and trend.
+
+
+``` {r za test, echo=TRUE, message=FALSE, warning=FALSE}
+# Structural breaks - Zivot Andrew test
+za_trend <- ur.za(training, model =  "trend")
+za_both <- ur.za(training, model =  "both")
+#summary(za_trend)
+#summary(za_both)
+
+# Creating the table for ZA test
+row1 <- c("Statistics","Allowing for break in trend","Allowing for break in both intercept and trend")
+row2 <- c("Minimum t-stat p-value",	"-4.139 (0.000)",	"-4.501 (0.000)")
+row3 <- c("1%",	"-4.93",	"-5.57")
+row4 <- c("5%",	"-4.42",	"-5.08")
+row5 <- c("10%",	"-4.11",	"-4.82")
+row6 <- c("Potential break point","2015M08","2009M06")
+
+zivot_andrew <- as.data.frame(rbind(row1,row2,row3,row4,row5,row6))
+
+zivot_andrew %>% gt() %>% tab_header(
+  title = md("**Zivot-Andrews unit root test having structural break for unemployment rate**")) 
+
+```
+
+Thus, the empirical results proved that the unemployment rate is non-stationary and integrated of order 1, I(1). \
+However, because the series of unemployment exhibits a seasonal pattern over the training period, the study will use a seasonal ARIMA model instead of non-seasonal models; therefore, it is necessary to check whether the seasonality is needed to be differenced or not, testing if the stochastic seasonality is present within the data, the empirical results of Hegy test revealing the rejection of seasonal unit root and the acceptance of only a non-seasonal unit root. Therefore, seasonal difference is not needed.
+
+```{r hegy test, echo=TRUE, message=FALSE, warning=FALSE}
+# Hegy Test
+hegy.test(training) 
+```
+Therefore, we can conclude that the unemployment rate is a non-stationary series, without stochastic seasonality and integrated of order 1. Thus, the rate of unemployment will be modeled at the first difference of the series within SARIMA model \
+\
+For the first difference of the UR, the model identification implies the identification of proper values of p, P, q, Q using the ACF and PACF plot. The seasonal part of an AR or MA model will be seen in the seasonal lags. The ACF plot has a spike at lags 4 and 6 and an exponential decay starting from seasonal lag 12, suggesting a potential non-seasonal MA component-MA(4) or MA(6) \
+Besides, the PACF plot shows that lags 4, 6 and 12 are significant, capturing also potential non-seasonal AR components together with a seasonal AR(1). In our case, because the autocorrelation at the seasonal lags (12, 24) is positive, a combination of seasonal and non-seasonal autoregressive models can be identified. Thus, several models have been specified and based on AIC and BIC together with the goodness of fit measures, the best model has been identified. \
+Thus, several models have been specified and based on AIC and BIC together with the goodness of fit measures, the best model has been identified, taking into account the lowest values of AIC and SBC. The best model has been an ARIMA(0,1,6)(1,0,1)12 considered based on the minimum value of AIC and BIC.
+
+```{r sarima tries, echo=TRUE, message=FALSE, warning=FALSE}
+# Fitting the optimal SARIMA model
+fit_sarima <- Arima(training, order=c(0,1,6), seasonal=c(1,0,1))
+
+# Coefficients test
+coeftest(fit_sarima)
+
+# Summary of results
+summary(fit_sarima)
+```
+
+Apart of classical tests, t-test for the statistical significance of the parameters and F-test for the validity of the model, the selection of the best model depends also on the performance of residuals. For that, the series of residuals has been investigated to fol-low a white noise. The empirical results of Ljung-Box test shows that the p-values of the test statistic exceed the 5% level of significance for all lag orders which implies that there is no significant autocorrelation in residuals.
+
+```{r sarima residuals, echo=TRUE, message=FALSE, warning=FALSE}
+# Check residuals plot
+checkresiduals(fit_sarima, lag=48)
+```
+
+For checking autoregressive conditional heteroskedasticity (ARCH) in the residuals the ARCH-LM test has been used, the empirical results confirmed that there is no autoregressive conditional heteroscedasticity (ARCH) in the residuals (table 11). Therefore, we can conclude that residuals are not autocorrelated and don’t form ARCH models, the SARIMA (0,1,6)(1,0,1)12 model being reliable for forecasting.
+
+```{r sarima residual tests, echo=TRUE, message=FALSE, warning=FALSE}
+# Ljung Box test for residuals
+# Box.test(fit_sarima$residuals, lag = 12, type = c("Ljung-Box"))
+# Box.test(fit_sarima$residuals, lag = 24, type = c("Ljung-Box"))
+# Box.test(fit_sarima$residuals, lag = 36, type = c("Ljung-Box"))
+# Box.test(fit_sarima$residuals, lag = 48, type = c("Ljung-Box"))
+
+# Arch LM test for residuals
+# ArchTest(fit_sarima$residuals, lags=12)
+# ArchTest(fit_sarima$residuals, lags=24)
+# ArchTest(fit_sarima$residuals, lags=36)
+# ArchTest(fit_sarima$residuals, lags=48)
+
+
+# Ljung Box and ARCH LM table
+Lags <- c("Ljung-Box test","P-value","ARCH-LM test","P-value")
+`12` <- c("2.9459",	"0.9959",	"9.1184",	"0.6928")
+`24` <- c("15.123",	"0.9171",	"44.267",	"0.2345")
+`36` <- c("25.531",	"0.9029",	"51.336",	"0.1878")
+`48` <- c("40.434",	"0.7727",	"58.159",	"0.1495")
+
+lb_archlm <- as.data.frame(cbind(Lags,`12`,`24`,`36`,`48`))
+
+
+lb_archlm %>% gt() %>% tab_header(
+  title = md("**Empirical results of Ljung-Box test and ARCH-LM test for model residuals**"))
+
+```
+Forecasting Performance of SARIMA(0,1,6)(1,0,1)x12 
+```{r accuracy, echo=TRUE, message=FALSE, warning=FALSE}
+# Forecast sarima
+fit_sarima_accuracy<- fit_sarima %>% forecast::forecast(h=60)
+
+# Check the accuracy
+forecast::accuracy(fit_sarima_accuracy, test)
+```
+
+The forecast of the unemployment rate based on the ARIMA(0,1,6)(1,0,1)x12 model results revealed a downward trend with a forecasting value for 2021-2022 oscillating around 
+the value of 3-4% 
+```{r sarima plot, echo=TRUE, message=FALSE, warning=FALSE}
+# Forecast plot
+fit_sarima_accuracy %>% forecast::forecast(h=60) %>%autoplot()
+```
+
+Making predictions about unemployment rate, one of the core indicator of Romanian labor market with fundamental impact on the government future social policy strategies is of great importance, mostly in this period of a major shock in the economy caused by the pandemics. 
+In this context, the aim of the research has been to evaluate the forecasting performance of several models and to build future values of unemployment rate for the period 2021-2022 using the most suitable results. In order to do that, we have employed exponential smoothing models both additive and multiplicative Holt-Winters (HW) models together with ETS model, the SARIMA model, the neural network autoregression (NNAR) model.
+
